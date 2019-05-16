@@ -1,7 +1,7 @@
 // @flow
 
 import invariant from 'invariant'
-import { Linking, NativeModules, Platform, processColor } from 'react-native'
+import { Linking, NativeModules, Platform, processColor, DeviceEventEmitter } from 'react-native'
 
 const { RNInAppBrowser } = NativeModules;
 
@@ -29,6 +29,7 @@ type InAppBrowserOptions = {
   enableUrlBarHiding?: boolean,
   enableDefaultShare?: boolean,
   forceCloseOnRedirection?: boolean,
+  onClose?: any,
   animations?: {
     startEnter: string,
     startExit: string,
@@ -51,6 +52,13 @@ async function open(url: string, options: InAppBrowserOptions = {}): Promise<Bro
   if (inAppBrowseroptions.preferredControlTintColor) {
     inAppBrowseroptions.preferredControlTintColor = processColor(inAppBrowseroptions.preferredControlTintColor)
   }
+  let listener = DeviceEventEmitter.addListener('onClose', () => {
+    if (inAppBrowseroptions.onClose) {
+      inAppBrowseroptions.onClose()
+    }
+    listener.remove()
+    listener = null
+  })
   return RNInAppBrowser.open(inAppBrowseroptions);
 }
 

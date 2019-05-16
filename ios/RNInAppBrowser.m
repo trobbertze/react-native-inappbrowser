@@ -11,8 +11,10 @@
 #import "RCTConvert.h"
 #endif
 #import <SafariServices/SafariServices.h>
-#if __has_include("AuthenticationServices/AuthenticationServices.h")
-#import <AuthenticationServices/AuthenticationServices.h>
+#if __has_include(<React/RCTEventDispatcher.h>)
+#import <React/RCTEventDispatcher.h>
+#else
+#import "RCTEventDispatcher.h"
 #endif
 
 @interface RNInAppBrowser () <SFSafariViewControllerDelegate>
@@ -22,11 +24,7 @@
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wpartial-availability"
-#if __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_12_0
-@property (nonatomic, strong) ASWebAuthenticationSession *authSession;
-#else
 @property (nonatomic, strong) SFAuthenticationSession *authSession;
-#endif
 #pragma clang diagnostic pop
 
 @end
@@ -37,6 +35,7 @@ NSString *RNInAppBrowserErrorCode = @"RNInAppBrowser";
 {
   UIStatusBarStyle _initialStatusBarStyle;
 }
+@synthesize bridge = _bridge;
 
 RCT_EXPORT_MODULE()
 
@@ -74,17 +73,10 @@ RCT_EXPORT_METHOD(openAuth:(NSString *)authURL
         [strongSelf flowDidFinish];
       }
     };
-#if __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_12_0
-        _authSession = [[ASWebAuthenticationSession alloc]
-                          initWithURL:url
-                          callbackURLScheme:redirectURL
-                          completionHandler:completionHandler];
-#else
-        _authSession = [[SFAuthenticationSession alloc]
-                          initWithURL:url
-                          callbackURLScheme:redirectURL
-                          completionHandler:completionHandler];
-#endif
+    _authSession = [[SFAuthenticationSession alloc]
+                    initWithURL:url
+                    callbackURLScheme:redirectURL
+                    completionHandler:completionHandler];
     [_authSession start];
   } else {
       resolve(@{
@@ -134,17 +126,16 @@ RCT_EXPORT_METHOD(open:(NSDictionary *)options
     }
   }
 
-  // By setting the modal presentation style to OverFullScreen, we disable the "Swipe to dismiss"
-  // gesture that is causing a bug where sometimes `safariViewControllerDidFinish` is not called.
-  // There are bugs filed already about it on OpenRadar.
-  [safariVC setModalPresentationStyle: UIModalPresentationNone];
+ // By setting the modal presentation style to OverFullScreen, we disable the "Swipe to dismiss"
+ // gesture that is causing a bug where sometimes `safariViewControllerDidFinish` is not called.
+ // There are bugs filed already about it on OpenRadar.
+ [safariVC setModalPresentationStyle: UIModalPresentationOverFullScreen];
 
-  // This is a hack to present the SafariViewController modally
-  UINavigationController *safariHackVC = [[UINavigationController alloc] initWithRootViewController:safariVC];
-  [safariHackVC setNavigationBarHidden:true animated:false];
-
-  UIViewController *ctrl = RCTPresentedViewController();
-  [ctrl presentViewController:safariHackVC animated:YES completion:nil];
+ // This is a hack to present the SafariViewController modally
+ UINavigationController *safariHackVC = [[UINavigationController alloc] initWithRootViewController:safariVC];
+ [safariHackVC setNavigationBarHidden:true animated:false];
+ UIViewController *presentingViewController = RCTPresentedViewController();
+ [presentingViewController presentViewController:safariHackVC animated:true completion:nil];
 }
 
 - (void)performSynchronouslyOnMainThread:(void (^)(void))block
@@ -160,8 +151,8 @@ RCT_EXPORT_METHOD(open:(NSDictionary *)options
 {
   __weak typeof(self) weakSelf = self;
   [self performSynchronouslyOnMainThread:^{
-    UIViewController *ctrl = RCTPresentedViewController();
-    [ctrl dismissViewControllerAnimated:YES completion:^{
+    UIViewController *presentingViewController = RCTPresentedViewController();
+    [presentingViewController dismissViewControllerAnimated:YES completion:^{
       __strong typeof(self) strongSelf = weakSelf;
       if (strongSelf) {
         strongSelf.redirectResolve(@{
@@ -224,7 +215,10 @@ RCT_EXPORT_METHOD(isAvailable:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromi
   _redirectResolve(@{
     @"type": @"cancel",
   });
+  [self.bridge.eventDispatcher sendDeviceEventWithName:@"onClose"
+                                              body:@{}];
   [self flowDidFinish];
+  
 }
 
 -(void)flowDidFinish
